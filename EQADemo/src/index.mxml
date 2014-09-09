@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009" xmlns:s="library://ns.adobe.com/flex/spark" xmlns:mx="library://ns.adobe.com/flex/mx" minWidth="955" minHeight="600" creationComplete="init()">
+	<fx:Declarations>
+		<!-- 将非可视元素（例如服务、值对象）放在此处 -->
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.easily.ds.DataBaseData;
+			import com.easily.util.MyDataBase;
+			
+			import flash.net.navigateToURL;
+			
+			import mx.collections.ArrayCollection;
+
+			[Embed("assets/eqa.png")]
+			private const linkButtonIcon:Class;
+
+			private var _db:MyDataBase;
+			private var _dbData:DataBaseData;
+			private var _isDBConnected:Boolean=false;
+			private var _isDBConnecting:Boolean=false;
+
+			[Bindable]
+			public var _dataArray:ArrayCollection=new ArrayCollection();
+
+
+			private var _searchResult:Array=new Array();
+
+			private function init():void
+			{
+				focusManager.setFocus(searchInput);
+				connectDB();
+
+				linkButton.setStyle("icon", linkButtonIcon);
+				//设置查询结果页面不可见
+				vgroup.setVisible(false);
+				this.addEventListener(KeyboardEvent.KEY_DOWN,onSearchButtonClick);
+			}
+
+			private function connectDB():void
+			{
+				_dbData=new DataBaseData();
+				_dbData.username="root";
+				_dbData.password="woxnsk";
+				_dbData.host="192.168.2.225";
+//				_dbData.username="root";
+//				_dbData.password="root";
+//				_dbData.host="localhost";
+				_dbData.port=3306;
+				_dbData.database="efaq";
+
+				_db=new MyDataBase(_dbData);
+				_db.addEventListener(Event.CONNECT, onConnected);
+				_db.connect();
+
+				_isDBConnecting=true;
+			}
+
+			private function onConnected(event:Event):void
+			{
+				_db.removeEventListener(Event.CONNECT, onConnected);
+
+				_isDBConnected=true;
+				_isDBConnecting=false;
+				//databaseLabel.text="Database status: Database connected!";
+			}
+
+			private function onSearchButtonClick(event:Event):void
+			{
+				vgroup.setVisible(false);
+//				navigateToURL(new URLRequest("EQADemo.html?id=2"),"_self");
+				if (searchInput.text.length == 0)
+					return;
+				_searchResult=new Array();
+				getSearchResult();
+
+			}
+
+			private function getSearchResult():void
+			{
+//				if(_searchResult.length == 0) return ;
+				var searchWords:Array=searchInput.text.split("\\s");
+				var query:String="%";
+				for each (var word:Object in searchWords)
+				{	
+					query+=word + "%";
+				}
+				query = query.toLowerCase();
+				var sql:String="select id,question from efaq.document where keywords like '" + query + "'";
+				trace(sql);
+				_db.select(sql,selectQueryComplete,selectError);
+			}
+			
+			private function selectQueryComplete(data:Array):void
+			{
+				trace("match query num is :" + data.length);
+				if(data.length > 0)
+				{
+					vgroup.setVisible(true);
+					_dataArray=new ArrayCollection();
+					for each(var item:Object in data)
+					{
+						var tmp:Object = new Object;
+						tmp.docID = item.id;
+						tmp.question = item.question;
+						_dataArray.addItem(tmp);
+					}
+					dataGrid.dataProvider=_dataArray;
+					dataGrid.addEventListener(MouseEvent.DOUBLE_CLICK, doubleClick);
+				}
+			}
+			
+			private function selectError():void
+			{
+				trace("select method error!");
+			}
+			private function doubleClick(event:MouseEvent):void
+			{
+				var id:int=Number(dataGrid.selectedItem.docID);
+				navigateToURL(new URLRequest("result.html?id=" + (id - 1)), "_self");
+			}
+		]]>
+	</fx:Script>
+	<s:Panel width="1161" height="783" verticalCenter="0" horizontalCenter="0">
+		<mx:LinkButton id="linkButton" x="447" y="58" width="266" height="126"/>
+		<s:TextInput id="searchInput" x="324" y="214" width="502" height="40" fontFamily="Times New Roman" fontSize="15"/>
+		<s:Button id="searchButton" x="856" y="212" height="42" label="Search" fontFamily="Times New Roman" fontSize="17" click="onSearchButtonClick(event)"/>
+		<s:VGroup id="vgroup" x="324" y="278" width="502" height="287">
+			<s:DataGrid id="dataGrid" width="503" height="284" requestedRowCount="4" doubleClickEnabled="true">
+				<s:columns>
+					<s:ArrayList>
+						<s:GridColumn dataField="docID" width="0">
+						</s:GridColumn>
+						<s:GridColumn dataField="question" headerText="相关问题">
+						</s:GridColumn>
+					</s:ArrayList>
+				</s:columns>
+				<s:typicalItem>
+					<fx:Object dataField1="示例数据" dataField2="示例数据" dataField3="示例数据">
+					</fx:Object>
+				</s:typicalItem>
+				<s:ArrayList>
+					<fx:Object dataField1="数据1" dataField2="数据1" dataField3="数据1">
+					</fx:Object>
+					<fx:Object dataField1="数据2" dataField2="数据2" dataField3="数据2">
+					</fx:Object>
+					<fx:Object dataField1="数据3" dataField2="数据3" dataField3="数据3">
+					</fx:Object>
+					<fx:Object dataField1="数据4" dataField2="数据4" dataField3="数据4">
+					</fx:Object>
+				</s:ArrayList>
+			</s:DataGrid>
+		</s:VGroup>
+	</s:Panel>
+</s:Application>

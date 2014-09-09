@@ -1,0 +1,480 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009" xmlns:s="library://ns.adobe.com/flex/spark" xmlns:mx="library://ns.adobe.com/flex/mx" height="804" minWidth="955" minHeight="600"
+			   creationComplete="init()" fontSize="12" fontWeight="bold">
+	<fx:Declarations>
+		<!-- 将非可视元素（例如服务、值对象）放在此处 -->
+	</fx:Declarations>
+
+	<fx:Script>
+		<![CDATA[
+			import com.easily.ds.DataBaseData;
+			import com.easily.util.MyDataBase;
+			
+			import flashx.textLayout.conversion.TextConverter;
+			
+			import mx.collections.ArrayCollection;
+			import mx.containers.HBox;
+			spark.components.Label;
+			import mx.controls.Text;
+			import mx.core.FlexGlobals;
+
+			import spark.components.TextArea;
+			import spark.components.VGroup;
+
+			import mx.managers.BrowserManager;  
+			import mx.managers.IBrowserManager; 
+			
+			private var _db:MyDataBase;
+			private var _dbData:DataBaseData;
+			private var _isDBConnected:Boolean=false;
+			private var _isDBConnecting:Boolean=false;
+
+			private var _documentList:Array=new Array();
+
+			private var _currentDocumentNo:int=0;
+
+			private var _qmailSegments:Array=new Array();
+			private var _amailSegments:Array=new Array();
+
+			private var _subject:String="";
+			private var _author:String="";
+			private var _sendDate:String="";
+			private var _content:String="";
+
+			private var _subject2:String="";
+			private var _author2:String="";
+			private var _sendDate2:String="";
+			private var _content2:String="";
+
+			private var _sendInfoLabel:Label=new Label();
+			private var _sendInfoTextArea:TextArea=new TextArea();
+
+			private var _sendInfoLabel2:Label=new Label();
+			private var _sendInfoTextArea2:TextArea=new TextArea();
+
+			private var _subjectLabel:Label=new Label();
+			private var _subjectTextArea:TextArea=new TextArea();
+
+			private var _questionLabel:Label=new Label();
+			private var _questionTextArea:TextArea=new TextArea();
+
+
+			private var _normalColor:String="#0F0F0F";
+			private var _codeColor:String="#8B4513";
+			private var _stackColor:String="#8B0000";
+			private var _refColor:String="#0000FF";
+			private var _junkColor:String="#68228B";
+
+			private var _colorArray:Array=[_normalColor, _codeColor, _stackColor, _junkColor, _junkColor, _refColor];
+
+			[Bindable]
+			public var typeArray:ArrayCollection=new ArrayCollection([{label: "简化邮件", data: 0}, {label: "原始邮件", data: 1}]);
+
+			[Bindable]
+			public var typeArray2:ArrayCollection=new ArrayCollection([{label: "简化邮件", data: 0}, {label: "原始邮件", data: 1}]);
+
+			private function init():void
+			{
+				var styleManager:IStyleManager2=FlexGlobals.topLevelApplication.styleManager;
+				styleManager.getStyleDeclaration("mx.controls.ToolTip").setStyle("fontSize", 20);
+
+				Security.allowDomain("*");
+				Security.allowInsecureDomain("*");
+				
+				//读取参数
+				var browserManager:IBrowserManager = BrowserManager.getInstance();  
+				browserManager.init();  
+				var baseURL:String = browserManager.base;  
+				var params:Array = baseURL.split("?");
+				trace(params.length);
+				if(params.length > 1) {
+					_currentDocumentNo = Number(params[1].substr(3));
+					trace(params[1].substr(3));
+				}
+//				getSharedObject();
+				//连接数据库
+				connectDB();
+
+				//获取所有问答文档的基础信息
+				getAllDocuments();
+
+				//TODO
+				//testSharedObject();
+			}
+
+			private function getSharedObject():void
+			{
+				var so:SharedObject = SharedObject.getLocal("QA","/");
+				_currentDocumentNo = so.data.id;
+				trace(_currentDocumentNo);
+			}
+
+
+			private function connectDB():void
+			{
+				_dbData=new DataBaseData();
+				_dbData.username="root";
+				_dbData.password="woxnsk";
+				_dbData.host="192.168.2.225";
+				_dbData.port=3306;
+				_dbData.database="efaq";
+
+				_db=new MyDataBase(_dbData);
+				_db.addEventListener(Event.CONNECT, onConnected);
+				_db.connect();
+
+				_isDBConnecting=true;
+			}
+
+			private function onConnected(event:Event):void
+			{
+				_db.removeEventListener(Event.CONNECT, onConnected);
+
+				_isDBConnected=true;
+				_isDBConnecting=false;
+				//databaseLabel.text="Database status: Database connected!";
+			}
+
+
+			private function getAllDocuments():void
+			{
+				var sql:String="select id,qmail_uuid,amail_uuid,question,question_seg_no,session_uuid from efaq.document";
+				_db.select(sql, selectMethodComplete, selectError);
+			}
+
+			private function selectMethodComplete(data:Array):void
+			{
+				trace("document num is :" + data.length);
+				_documentList=data;
+				for each (var temp:Object in _documentList)
+				{
+					trace(temp.question, temp.qmail_uuid, temp.amail_uuid, temp.question_seg_no, temp.session_uuid);
+				}
+				loadCurrentDocument(_currentDocumentNo);
+			}
+
+			private function selectError():void
+			{
+				trace("select method error!");
+			}
+
+			private function loadCurrentDocument(docNo:int):void
+			{
+				currentLabel.text="当前第" + (docNo + 1) + "/" + _documentList.length + "个";
+				trace(docNo);
+				var currentDocument:Object=_documentList[docNo];
+
+				var qSql:String="select message_uuid,session_uuid,segment_no,segment_type,content from efaq.segment where message_uuid = '" + currentDocument.qmail_uuid + "' order by segment_no";
+				var aSql:String="select message_uuid,session_uuid,segment_no,segment_type,content from efaq.segment where message_uuid = '" + currentDocument.amail_uuid + "' order by segment_no";
+				trace(qSql);
+				_db.select(qSql, selectQuestionComplete, selectError);
+				trace(aSql);
+				_db.select(aSql, selectAnswerComplete, selectError);
+
+			}
+
+			private function selectQuestionComplete(data:Array):void
+			{
+				trace("question segment num is :" + data.length);
+				_qmailSegments=data;
+				for each (var item:Object in _qmailSegments)
+				{
+					trace(item.message_uuid, item.session_uuid, item.segment_no, item.segment_type, item.content);
+				}
+				//get subject , author, sendDate information
+				var msgUuid:String=_documentList[_currentDocumentNo].qmail_uuid;
+				getQBaseInfo(msgUuid);
+
+			}
+
+			private function selectAnswerComplete(data:Array):void
+			{
+				trace("answer segment num is :" + data.length);
+				_amailSegments=data;
+				for each (var item:Object in _amailSegments)
+				{
+					trace(item.message_uuid, item.session_uuid, item.segment_no, item.segment_type, item.content);
+				}
+				var msgUuid:String=_documentList[_currentDocumentNo].amail_uuid;
+				getABaseInfo(msgUuid);
+			}
+
+			private function getQMailPage(type:int):void
+			{
+
+				//first clear the panel
+				vgroup.removeAllElements();
+
+				var sendInfoHbox:HBox=new HBox();
+				_sendInfoLabel.text="SendInfo:";
+				_sendInfoLabel.width=60;
+				_sendInfoLabel.height=20;
+				_sendInfoTextArea=new TextArea();
+				_sendInfoTextArea.text=_author + " | " + _sendDate;
+				_sendInfoTextArea.width=700;
+				_sendInfoTextArea.height=20;
+				sendInfoHbox.addChild(_sendInfoLabel);
+				sendInfoHbox.addChild(_sendInfoTextArea);
+				vgroup.addElement(sendInfoHbox);
+
+				var subjectInfoHbox:HBox=new HBox();
+				_subjectLabel.text="Subject:";
+				_subjectLabel.width=60;
+				_subjectLabel.height=20;
+				_subjectTextArea.text=_subject;
+				_subjectTextArea.width=700;
+				_subjectTextArea.height=20;
+				subjectInfoHbox.addChild(_subjectLabel);
+				subjectInfoHbox.addChild(_subjectTextArea);
+				vgroup.addElement(subjectInfoHbox);
+
+				var questionInfoHbox:HBox=new HBox();
+				_questionLabel.text="Question:";
+				_questionLabel.width=60;
+				_questionLabel.height=20;
+				_questionTextArea.text=_documentList[_currentDocumentNo].question;
+				_questionTextArea.setStyle("color", "#ff0000");
+				_questionTextArea.width=700;
+				_questionTextArea.height=20;
+				questionInfoHbox.addChild(_questionLabel);
+				questionInfoHbox.addChild(_questionTextArea);
+				vgroup.addElement(questionInfoHbox);
+
+				if (type == 0) //if type is 0, show the simple question information
+				{
+					//here we add the mail question segments
+					for (var i:int=0; i < _qmailSegments.length; i++)
+					{
+						trace(_qmailSegments[i].segment_type, _qmailSegments[i].segment_no, _documentList[_currentDocumentNo].question_seg_no);
+						if (_qmailSegments[i].segment_type >= 3)
+							continue;
+						if (_qmailSegments[i].segment_type == 0 && _qmailSegments[i].segment_no == _documentList[_currentDocumentNo].question_seg_no)
+						{
+							//this segment contains the question sentence
+							addTextArea(0, _qmailSegments[i].content, vgroup);
+						}
+						else if (_qmailSegments[i].segment_type == 1 || _qmailSegments[i].segment_type == 2)
+						{
+							//this segment contains the code
+							addTextArea(_qmailSegments[i].segment_type, _qmailSegments[i].content, vgroup);
+						}
+
+					}
+				}
+				else //if type is 1, show all info
+				{
+					addAllInfo(_qmailSegments, vgroup,true);
+				}
+			}
+
+			private function addTextArea(type:int, content:String, vg:VGroup):void
+			{
+				var qTextArea:TextArea=new TextArea();
+				qTextArea.width=760;
+				qTextArea.height=80;
+				qTextArea.text=content;
+				qTextArea.setStyle("color", _colorArray[type]);
+				vg.addElement(qTextArea);
+			}
+
+			private function addAllInfo(segments:Array, vg:VGroup,flag:Boolean):void
+			{
+				var totalTextArea:TextArea=new TextArea();
+				totalTextArea.width=760;
+				totalTextArea.height=240;
+
+				var text:String="";
+
+				for each (var item:Object in segments)
+				{
+					var type:int=item.segment_type;
+					var contentLines:Array=item.content.split("\n");
+					
+					if(flag == true && item.segment_no == _documentList[_currentDocumentNo].question_seg_no)
+					{
+						text += "<i>";
+					}
+					text+="<font color='" + _colorArray[type] + "'>";
+					for each (var line:String in contentLines)
+					{
+						line=line.replace("<", "&lt;");
+						line=line.replace(">", "&gt;");
+						text+=line + "<br/>";
+					}
+					text+="</font>";
+					if(flag == true && item.segment_no == _documentList[_currentDocumentNo].question_seg_no)
+					{
+						text += "</i>";
+					}
+				}
+				totalTextArea.textFlow=TextConverter.importToFlow(text, TextConverter.TEXT_FIELD_HTML_FORMAT)
+
+				vg.addElement(totalTextArea);
+			}
+
+			private function getABaseInfo(msgUuid:String):void
+			{
+				var sql:String="select subject,fromName,fromEmail,sendDate,content from efaq.message where messageID = '" + msgUuid + "'";
+				trace("get base info sql is :" + sql);
+				_db.select(sql, selectABaseInfoComplete, selectError);
+			}
+
+			private function selectABaseInfoComplete(data:Array):void
+			{
+				trace("base info length is :" + data.length);
+				if (data.length == 1)
+				{
+					_subject2=data[0].subject;
+					_author2=data[0].fromName + " | " + data[0].fromEmail;
+					_sendDate2=data[0].sendDate;
+					trace(_subject2, _author2, _sendDate2);
+					_sendInfoTextArea2.text=_author2 + " | " + _sendDate2;
+					_content2=data[0].content;
+				}
+				getAMailPage(1);
+			}
+
+			private function getQBaseInfo(msgUuid:String):void
+			{
+				var sql:String="select subject,fromName,fromEmail,sendDate,content from efaq.message where messageID = '" + msgUuid + "'";
+				trace("get base info sql is :" + sql);
+				_db.select(sql, selectQBaseInfoComplete, selectError);
+			}
+
+			private function selectQBaseInfoComplete(data:Array):void
+			{
+				trace("base info length is :" + data.length);
+				if (data.length == 1)
+				{
+					_subject=data[0].subject;
+					_author=data[0].fromName + " | " + data[0].fromEmail;
+					_sendDate=data[0].sendDate;
+					trace(_subject, _author, _sendDate);
+					_sendInfoTextArea.text=_author + " | " + _sendDate;
+					_subjectTextArea.text=_subject;
+					_content=data[0].content;
+				}
+				getQMailPage(1);
+			}
+
+			private function closeHandler(event:Event):void
+			{
+				if (ComboBox(event.target).selectedItem.label == "简化邮件")
+				{
+					getQMailPage(0);
+				}
+				else
+					getQMailPage(1);
+			}
+
+			private function closeHandler2(event:Event):void
+			{
+				if (ComboBox(event.target).selectedItem.label == "简化邮件")
+				{
+					getAMailPage(0);
+				}
+				else
+					getAMailPage(1);
+			}
+
+			private function getAMailPage(type:int):void
+			{
+				vgroup2.removeAllElements();
+
+				var sendInfoHbox:HBox=new HBox();
+				_sendInfoLabel2.text="SendInfo:";
+				_sendInfoLabel2.width=60;
+				_sendInfoLabel2.height=20;
+				_sendInfoTextArea2=new TextArea();
+				_sendInfoTextArea2.text=_author2 + " | " + _sendDate2;
+				_sendInfoTextArea2.width=700;
+				_sendInfoTextArea2.height=20;
+				sendInfoHbox.addChild(_sendInfoLabel2);
+				sendInfoHbox.addChild(_sendInfoTextArea2);
+				vgroup2.addElement(sendInfoHbox);
+
+				if (type == 0)
+				{
+					//here we add the mail question segments
+					for (var i:int=0; i < _amailSegments.length; i++)
+					{
+						trace(_amailSegments[i].segment_type, _amailSegments[i].segment_no, _documentList[_currentDocumentNo].question_seg_no);
+						if (_amailSegments[i].segment_type == 3 || _amailSegments[i].segment_type == 4)
+							continue;
+						addTextArea(_amailSegments[i].segment_type, _amailSegments[i].content, vgroup2);
+
+					}
+				}
+				else
+				{
+					addAllInfo(_amailSegments, vgroup2,false);
+				}
+			}
+
+			private function onJumpClick(event:Event):void
+			{
+				var num:Number=Number(jumpNo.text);
+				_currentDocumentNo=num - 1;
+				loadCurrentDocument(_currentDocumentNo);
+			}
+
+			private function onPreClick(event:Event):void
+			{
+				if (_currentDocumentNo == 0)
+					_currentDocumentNo=_documentList.length - 1;
+				else
+					_currentDocumentNo--;
+				loadCurrentDocument(_currentDocumentNo);
+			}
+
+			private function onNextClick(event:Event):void
+			{
+				if (_currentDocumentNo == _documentList.length - 1)
+					_currentDocumentNo=0;
+				else
+					_currentDocumentNo++;
+				loadCurrentDocument(_currentDocumentNo);
+			}
+
+			private function onIndexButtonClick(event:Event):void
+			{
+				var urlRequest:URLRequest=new URLRequest();
+				urlRequest.url="index.html";
+				navigateToURL(urlRequest,'_self');
+			}
+		]]>
+	</fx:Script>
+	<s:BorderContainer width="1161" height="783" verticalCenter="0" horizontalCenter="0">
+		<s:Panel id="qPanel" x="76.5" y="10" width="800" title="问题信息">
+			<s:ComboBox id="typeCombo" x="460.5" y="-27" dataProvider="{typeArray}" close="closeHandler(event)" prompt="原始邮件"/>
+			<s:VGroup id="vgroup" x="1" y="10" width="798" height="335">
+			</s:VGroup>
+		</s:Panel>
+		<s:Panel id="aPanel" x="77" y="413" width="800" height="358" title="答案信息">
+			<s:ComboBox x="461" y="-30" dataProvider="{typeArray2}" close="closeHandler2(event)" prompt="原始邮件"/>
+			<s:VGroup id="vgroup2" x="0" y="10" width="798" height="305">
+			</s:VGroup>
+		</s:Panel>
+		<s:Panel x="0" y="44" width="69" height="306">
+			<s:Button x="24" y="10" width="21" height="21" label="正文信息" chromeColor="#0F0F0F"/>
+			<s:Button x="24" y="63" width="21" height="21" label="代码片段" chromeColor="#8B4513"/>
+			<s:Button x="24" y="115" width="21" height="21" label="异常文本片段" chromeColor="#8B0000"/>
+			<s:Button x="23" y="172" width="21" height="21" label="邮件引用" chromeColor="#0000FF"/>
+			<s:Button x="24" y="222" width="21" height="21" label="冗余文本" chromeColor="#68228B"/>
+			<s:Label x="10" y="35" width="47" height="20" text="正文" textAlign="center" verticalAlign="middle"/>
+			<s:Label x="10" y="91" width="47" height="20" text="代码" textAlign="center" verticalAlign="middle"/>
+			<s:Label x="0" y="144" width="67" height="20" text="异常信息" textAlign="center" verticalAlign="middle"/>
+			<s:Label x="10" y="200" width="47" height="20" text="引用" textAlign="center" verticalAlign="middle"/>
+			<s:Label x="11" y="247" width="47" height="20" text="冗余" textAlign="center" verticalAlign="middle"/>
+		</s:Panel>
+		<s:Panel x="899" y="62" width="250" height="200">
+			<s:Label id="currentLabel" x="18" y="10" width="220" height="27" text="当前第1/1个" textAlign="center" verticalAlign="justify"/>
+			<s:Button id="jumpButton" x="38" y="31" height="30" label="跳转至:" click="onJumpClick(event)"/>
+			<s:TextArea id="jumpNo" x="151" y="31" width="68" height="30"/>
+			<s:Button id="preButton" x="38" y="91" height="32" label="&lt;--上一个" click="onPreClick(event)"/>
+			<s:Button id="nextButton" x="147" y="91" height="32" label="下一个--&gt;" click="onNextClick(event)"/>
+		</s:Panel>
+		<s:Button id="indexButton" x="936" y="10" width="158" height="44" label="返回首页" icon="assets/eqa2.png" click="onIndexButtonClick(event)"/>
+	</s:BorderContainer>
+		
+</s:Application>

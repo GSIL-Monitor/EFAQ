@@ -1,0 +1,10 @@
+#I want to use StandardAnalyzer for tokenizing my document.
+FW VBP VB PROJECT_WORD
+#How to get the "context" of the searched word ?
+how to PROJECT_WORD DT NN
+how FW VB NN 
+how FW NN PROJECT_WORD
+how can FW PROJECT_WORD 
+#Where
+where PROJECT_WORD NN
+what VBZ NN NN 
